@@ -1,0 +1,192 @@
+<?php
+
+
+class s93_FormBuilder {
+  protected static $ID = 1;
+  
+  protected $dir;
+  protected $form;
+  protected $module;
+  protected $path;
+  protected $token;
+  protected $views_path;
+
+
+  public function __construct($module, $path) {
+    $this->form = array();
+    $this->module = $module;
+    $this->token = 'form_builder'.static::$ID++;
+    $this->views_path = dirname($path).'/userData/';
+    $this->path = dirname($path);
+    $this->dir = '/userData/';
+    
+    if (!file_exists($this->views_path))
+      mkdir($this->views_path);
+  }
+
+  /**
+   * Add input to form
+   * @param string $name
+   * @param string $type
+   * @param string $label
+   * @param string $desc
+   * @return \s93_FormBuilder
+   */
+  public function addInput($name, $type, $label = '', $desc = '')
+  {
+    $label = $label ? $label : $name;
+    
+    $this->form['input'][] = array(
+      'type' => $type,
+      'label' => $this->module->l($label),
+      'name' => $name,
+      'desc' => $this->module->l($desc)
+    );
+    
+    return $this;
+  }
+  
+  /**
+   * Add submit button
+   * @param string $label
+   * @return \s93_FormBuilder
+   */
+  public function addSubmit($label)
+  {
+    $this->form['submit'] = array(
+      'title' => $this->module->l($label)
+    );
+    
+    return $this;
+  }
+  
+  /**
+   * Add title to form
+   * @param string $title
+   * @return \s93_FormBuilder
+   */
+  public function addTitle($title)
+  {
+    $this->form['legend'] = array(
+      'title' => $this->module->l($title)
+    );
+    
+    return $this;
+  }
+
+  /**
+   * Build form
+   * @param Context $context
+   * @param string $uri
+   * @return string
+   */
+  public function build($context, $uri, $table, $identifier)
+  {
+    $module = $this->module;
+    
+    $helper = new HelperForm();
+    $helper->show_toolbar = false;
+    $helper->table =  $table;
+    $lang = new Language((int)Configuration::get('PS_LANG_DEFAULT'));
+    $helper->default_form_language = $lang->id;
+    $helper->module = $module;
+    $helper->allow_employee_form_lang = Configuration::get('PS_BO_ALLOW_EMPLOYEE_FORM_LANG') ? Configuration::get('PS_BO_ALLOW_EMPLOYEE_FORM_LANG') : 0;
+    $helper->identifier = $identifier;
+    $helper->submit_action = $this->token;
+    $query = '&configure='.$module->name.'&tab_module='.$module->tab.'&module_name='.$module->name;
+    $helper->currentIndex = $context->link->getAdminLink('AdminModules', false).$query;
+    $helper->token = Tools::getAdminTokenLite('AdminModules');
+    $helper->tpl_vars = array(
+      'uri' => $uri,
+      'fields_value' => $this->values(),
+      'languages' => $context->controller->getLanguages(),
+      'id_language' => $context->language->id
+    );
+        
+    return $helper->generateForm(array(array('form' => $this->form)));
+  }
+  
+  /**
+   * Delete stored files
+   */
+  public function deleteUserData() {
+    $glob = $this->filename('*');
+    
+    foreach (glob($glob) as $filename) {
+      unlink($filename);
+    }
+  }
+
+  /**
+   * Update stored user inputs from submitted values
+   */
+  public function update()
+  {
+    if (Tools::isSubmit($this->token)) {
+      foreach ($this->keys() as $name) {
+        $value = Tools::getValue($name, '');
+        $this->store($name, $value);
+      }
+    }
+  }
+  
+  /**
+   * Get file name to view
+   * @param string $name
+   * @param bool $relative
+   * @return string
+   */
+  public function filename($name, $relative = false) 
+  {
+    $prefix = $relative ? '' : $this->path;
+    return $prefix.$this->dir.$name.'.txt';
+  }
+  
+  /**
+   * Get input names
+   * @return array
+   */
+  protected function keys()
+  {
+    return array_map(function($input) {
+      return $input['name'];
+    }, $this->form['input']);
+  }
+  
+  /**
+   * Retrieve stored user input
+   * @param type $name
+   * @return type
+   */
+  public function retrieve($name)
+  {
+    $filename = $this->filename($name);
+    return file_exists($filename) ? file_get_contents($filename) : '';
+  }
+  
+  /**
+   * Store user input
+   * @param string $name
+   * @param string $value
+   */
+  protected function store($name, $value)
+  {
+    $filename = $this->filename($name);
+    file_put_contents($filename, $value);
+  }
+  
+  /**
+   * Get stored user input values
+   * @return array
+   */
+  protected function values() {
+    $values = array();
+    
+    foreach ($this->form['input'] as $input) {
+      $name = $input['name'];
+      $values[$name] = $this->retrieve($name);
+    }
+    
+    return $values;
+  }
+}
